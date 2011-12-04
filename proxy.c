@@ -246,10 +246,7 @@ int forward_request(int client_fd, Request *request, Response *response) {
     printf("request_str:%s", request->request_str); 
     #endif
     
-  //  rio_writen(server_fd, request->request_str, strlen(request->request_str));
-  //  rio_writen(server_fd, request->host_str, strlen(request->host_str));
     rio_writen(server_fd, request->content, strlen(request->content));
-//    rio_writen(server_fd, "\r\n", strlen("\r\n"));
     
     forward_response(client_fd, server_fd, response);
     close(server_fd);
@@ -265,8 +262,6 @@ void parse_request_header(int client_fd, Request *request) {
     char buffer[MAXLINE];
     size_t  size = 0;
     rio_readinitb(&client_rio, client_fd);
-//    copy_single_line_str(&client_rio, request->request_str);
-//    copy_single_line_str(&client_rio, request->host_str);
 
     request->content = Malloc(sizeof(char) * MAX_OBJECT_SIZE);
     char * current_pos = request->content;    
@@ -281,26 +276,19 @@ void parse_request_header(int client_fd, Request *request) {
            strcpy(request->request_str, buffer);
            request->request_str[strlen(buffer)]='\0';
         }
-    //    memcpy(current_pos, buffer, strlen(buffer));
-      //  current_pos += strlen(buffer);
+        memcpy(current_pos, buffer, strlen(buffer));
+        current_pos += strlen(buffer);
         if(strstr(buffer, "Host")!=NULL) {
            strcpy(request->host_str,buffer);
            request->host_str[strlen(buffer)]='\0';
         }
         if (!strcmp(buffer, "\r\n")) {
-            memcpy(current_pos, buffer, strlen(buffer));
-            //current_pos += strlen(buffer);
-            current_pos[strlen(buffer)] ='\0';
             break;
         }
-        memcpy(current_pos, buffer, strlen(buffer));
-        current_pos += strlen(buffer);
     }
     #ifdef DEBUG
     printf("request str:%s", request->request_str);
     printf("host str: %s", request->host_str);
-    printf("size = %d, %d\n",(int) size,(int)strlen(request->content));
-    printf("content:\n%s", request->content);
     #endif
 }
 
@@ -315,7 +303,6 @@ void *request_handler(int client_fd) {
     Request request;
     Response response;
     parse_request_header(client_fd, &request);
-    //modify_request_header(&request);
     
     if (check_cache(&request, &response)) {
         #ifdef DEBUG
