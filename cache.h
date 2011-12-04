@@ -16,6 +16,7 @@ typedef struct Cache_Block Cache_Block;
 typedef struct {
     char request_str[MAXLINE]; 
     char host_str[MAXLINE];
+    char *content;
 } Request;
 
 /*  response struct, wrapper for server's response */

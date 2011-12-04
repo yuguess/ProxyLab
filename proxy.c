@@ -16,7 +16,7 @@
 #include "sbuf.h"
 #include "crc32.h"
 #include "cache.h"
-
+#define DEBUG
 /* Global variables */
 sbuf_t sbuf; /* shared buffer of connected descriptors */
 
@@ -34,7 +34,7 @@ void parse_request_header(int, Request *);
 void *request_handler(int);
 void *worker_thread(void *);
 
-/* Macto definition*/
+/* Macro definition*/
 #define NTHREADS  40
 #define SBUFSIZE  20
 #define state_ofs 9
@@ -227,13 +227,14 @@ int forward_request(int client_fd, Request *request, Response *response) {
     int server_fd;
     char hostname[MAXLINE];
     int  port = 80;
-
     port = extract_port_number(request->request_str);
     extract_hostname(request->host_str, hostname);
 
     #ifdef DEBUG
     printf("hostname:%s\n", hostname);
     printf("port:%d\n", port);
+    printf("---request content%s",request->content);
+    printf("end\n");
     #endif
     if ((server_fd = open_clientfd(hostname, port)) < 0) {
        fprintf(stderr, "Warning connection refused !\n"); 
@@ -245,9 +246,10 @@ int forward_request(int client_fd, Request *request, Response *response) {
     printf("request_str:%s", request->request_str); 
     #endif
     
-    rio_writen(server_fd, request->request_str, strlen(request->request_str));
-    rio_writen(server_fd, request->host_str, strlen(request->host_str));
-    rio_writen(server_fd, "\r\n", strlen("\r\n"));
+  //  rio_writen(server_fd, request->request_str, strlen(request->request_str));
+  //  rio_writen(server_fd, request->host_str, strlen(request->host_str));
+    rio_writen(server_fd, request->content, strlen(request->content));
+//    rio_writen(server_fd, "\r\n", strlen("\r\n"));
     
     forward_response(client_fd, server_fd, response);
     close(server_fd);
@@ -261,24 +263,45 @@ void parse_request_header(int client_fd, Request *request) {
     size_t  n;
     rio_t   client_rio;
     char buffer[MAXLINE];
-
+    size_t  size = 0;
     rio_readinitb(&client_rio, client_fd);
-    copy_single_line_str(&client_rio, request->request_str);
-    copy_single_line_str(&client_rio, request->host_str);
+//    copy_single_line_str(&client_rio, request->request_str);
+//    copy_single_line_str(&client_rio, request->host_str);
 
-    #ifdef DEBUG
-    printf("request str:%s", request->request_str);
-    printf("host str: %s", request->host_str);
-    #endif
-    
+    request->content = Malloc(sizeof(char) * MAX_OBJECT_SIZE);
+    char * current_pos = request->content;    
     while ((n = rio_readlineb(&client_rio, buffer, MAXLINE)) != 0) { 
         #ifdef DEBUG
         printf("%s", buffer); 
         #endif
+        size += strlen(buffer);
+        if(strstr(buffer, "HTTP/1.1")!=NULL) {
+           strncpy(strstr(buffer, "HTTP/1.1"),"HTTP/1.0",8);
+           printf("buffer change%s",buffer);
+           strcpy(request->request_str, buffer);
+           request->request_str[strlen(buffer)]='\0';
+        }
+    //    memcpy(current_pos, buffer, strlen(buffer));
+      //  current_pos += strlen(buffer);
+        if(strstr(buffer, "Host")!=NULL) {
+           strcpy(request->host_str,buffer);
+           request->host_str[strlen(buffer)]='\0';
+        }
         if (!strcmp(buffer, "\r\n")) {
+            memcpy(current_pos, buffer, strlen(buffer));
+            //current_pos += strlen(buffer);
+            current_pos[strlen(buffer)] ='\0';
             break;
         }
+        memcpy(current_pos, buffer, strlen(buffer));
+        current_pos += strlen(buffer);
     }
+    #ifdef DEBUG
+    printf("request str:%s", request->request_str);
+    printf("host str: %s", request->host_str);
+    printf("size = %d, %d\n",(int) size,(int)strlen(request->content));
+    printf("content:\n%s", request->content);
+    #endif
 }
 
 /* 
@@ -292,7 +315,7 @@ void *request_handler(int client_fd) {
     Request request;
     Response response;
     parse_request_header(client_fd, &request);
-    modify_request_header(&request);
+    //modify_request_header(&request);
     
     if (check_cache(&request, &response)) {
         #ifdef DEBUG
@@ -315,6 +338,7 @@ void *request_handler(int client_fd) {
     }
 
     close(client_fd);
+    free(request.content);
     #ifdef DEBUG
     printf("connection close\n");
     printf("leave request_handler\n");
@@ -332,7 +356,7 @@ void *worker_thread(void *vargp) {
     #endif
     Pthread_detach(pthread_self()); 
     while (1) { 
-	    int client_fd = sbuf_remove(&sbuf);
+	int client_fd = sbuf_remove(&sbuf);
         request_handler(client_fd);
     }    
 }
