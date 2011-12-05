@@ -36,7 +36,7 @@ void *worker_thread(void *);
 
 /* Macro definition*/
 #define NTHREADS  40
-#define SBUFSIZE  20
+#define SBUFSIZE  40
 #define state_ofs 9
 int main (int argc, char *argv []) {
     int listen_fd, port;
@@ -247,7 +247,9 @@ int forward_request(int client_fd, Request *request, Response *response) {
     #endif
     
     rio_writen(server_fd, request->content, strlen(request->content));
-    
+
+    free(request->content);
+
     forward_response(client_fd, server_fd, response);
     close(server_fd);
     return 1;
@@ -269,23 +271,28 @@ void parse_request_header(int client_fd, Request *request) {
         #ifdef DEBUG
         printf("%s", buffer); 
         #endif
-        size += strlen(buffer);
-        if(strstr(buffer, "HTTP/1.1")!=NULL) {
-           strncpy(strstr(buffer, "HTTP/1.1"),"HTTP/1.0",8);
+        size += n;
+        if (strstr(buffer, "HTTP/1.1") != NULL) {
+           strncpy(strstr(buffer, "HTTP/1.1"), "HTTP/1.0", 8);
            printf("buffer change%s",buffer);
            strcpy(request->request_str, buffer);
-           request->request_str[strlen(buffer)]='\0';
+           request->request_str[n]='\0';
         }
-        memcpy(current_pos, buffer, strlen(buffer));
-        current_pos += strlen(buffer);
-        if(strstr(buffer, "Host")!=NULL) {
+        memcpy(current_pos, buffer, n * sizeof(char));
+        current_pos += n;
+
+        if (strstr(buffer, "Host") != NULL) {
            strcpy(request->host_str,buffer);
-           request->host_str[strlen(buffer)]='\0';
+           request->host_str[n]='\0';
         }
         if (!strcmp(buffer, "\r\n")) {
             break;
         }
+        printf("here\n");
     }
+    request->content[size] = '\0'; 
+    size = 0;
+
     #ifdef DEBUG
     printf("request str:%s", request->request_str);
     printf("host str: %s", request->host_str);
@@ -304,12 +311,14 @@ void *request_handler(int client_fd) {
     Response response;
     parse_request_header(client_fd, &request);
     
+    /*
     if (check_cache(&request, &response)) {
         #ifdef DEBUG
         printf("in cache ! \n");
         #endif
         send_client(client_fd, &response);
     } else {
+    */
         #ifdef DEBUG
         printf("not in cache !\n");
         #endif
@@ -322,10 +331,9 @@ void *request_handler(int client_fd) {
                 response.header[state_ofs]=='2')
                 save_to_cache(&request, &response);
         }
-    }
+    //}
 
     close(client_fd);
-    free(request.content);
     #ifdef DEBUG
     printf("connection close\n");
     printf("leave request_handler\n");
@@ -343,7 +351,7 @@ void *worker_thread(void *vargp) {
     #endif
     Pthread_detach(pthread_self()); 
     while (1) { 
-	int client_fd = sbuf_remove(&sbuf);
+	    int client_fd = sbuf_remove(&sbuf);
         request_handler(client_fd);
     }    
 }
